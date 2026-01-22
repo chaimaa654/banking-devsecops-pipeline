@@ -31,7 +31,7 @@ jobs:
         with:
           name: phpstan-report
           path: phpstan-report.json
-  image_scan:
+image_scan:
   name: Build and Scan DVWA Image
   runs-on: ubuntu-latest
 
