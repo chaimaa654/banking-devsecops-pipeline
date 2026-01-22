@@ -1,0 +1,33 @@
+name: DVWA SAST Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sast_scan:
+    name: SAST Scan DVWA
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+
+      - name: Install PHPStan
+        run: composer require --dev phpstan/phpstan
+
+      - name: Run PHPStan Scan
+        run: vendor/bin/phpstan analyse ./DVWA --error-format=json > phpstan-report.json || true
+
+      - name: Upload SAST Artifact
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: phpstan-report
+          path: phpstan-report.json
