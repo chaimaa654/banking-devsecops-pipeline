@@ -35,9 +35,9 @@ jobs:
           name: phpstan-report
           path: phpstan-report.json
 
-  # -------------------------------
-  # 2️⃣ Build Docker et Scan Image
-  # -------------------------------
+  # ==================================
+  # 2️⃣ Docker Build + Image Security
+  # ==================================
   image_scan:
     name: Build and Scan DVWA Image
     runs-on: ubuntu-latest
@@ -46,11 +46,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Set up Docker
-        uses: docker/setup-docker@v2
-        with:
-          version: '20.10.17'
 
       - name: Check files
         run: ls -la
