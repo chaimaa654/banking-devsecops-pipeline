@@ -31,9 +31,9 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
         args: >
-          -Dsonar.projectKey=DVWA
-          -Dsonar.organization=chaimaa654-org
-          -Dsonar.sources=./DVWA
+          -Dsonar.projectKey=banking-devsecops-pipeline
+          -Dsonar.organization=chaimaa654
+          -Dsonar.sources=.
           -Dsonar.host.url=https://sonarcloud.io
 
 
