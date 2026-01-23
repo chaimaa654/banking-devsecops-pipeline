@@ -15,35 +15,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.1'
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.1'
 
-      - name: Install Sonar Scanner
-        run: |
-          # Télécharger Sonar Scanner
-          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.9.3.74469-linux.zip
-          # Décompresser
-          unzip sonar-scanner.zip -d $HOME
-          # Ajouter au PATH
-          export PATH=$PATH:$HOME/sonar-scanner-4.9.3.74469-linux/bin
+    # Étape officielle SonarCloud
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@v2.1.0
+      with:
+        projectKey: DVWA
+        organization: ton-org
+        token: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Run SonarQube Scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          sonar-scanner \
-            -Dsonar.projectKey=DVWA \
-            -Dsonar.organization=ton-org \
-            -Dsonar.sources=./DVWA \
-            -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.login=$SONAR_TOKEN
 
   # ==================================
   # 2️⃣ SCA – Dépendances (Trivy)
