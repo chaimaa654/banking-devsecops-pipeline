@@ -6,7 +6,24 @@ on:
       - main
 
 jobs:
+  unit_tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+
+      - name: Install dependencies
+        run: composer install
+
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit tests/Unit
   # ===============================
   # 1️⃣ SAST – Analyse statique PHP
   # ===============================
@@ -77,6 +94,5 @@ jobs:
 
       - name: Docker Scout CVE Scan
         run: docker scout cves dvwa:latest || true
-      - name: Run Unit Tests
-        run: vendor/bin/phpunit --configuration phpunit.xml
+      
         
