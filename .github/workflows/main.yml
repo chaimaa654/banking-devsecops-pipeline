@@ -6,9 +6,10 @@ on:
       - main
 
 jobs:
-  # -------------------------------
-  # 1️⃣ Analyse SAST
-  # -------------------------------
+
+  # ===============================
+  # 1️⃣ SAST – Analyse statique PHP
+  # ===============================
   sast_scan:
     name: SAST Scan DVWA
     runs-on: ubuntu-latest
@@ -16,6 +17,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: recursive
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -26,7 +30,9 @@ jobs:
         run: composer require --dev phpstan/phpstan
 
       - name: Run PHPStan Scan
-        run: vendor/bin/phpstan analyse ./DVWA --error-format=json > phpstan-report.json || true
+        run: |
+          vendor/bin/phpstan analyse ./DVWA \
+          --error-format=json > phpstan-report.json || true
 
       - name: Upload SAST Artifact
         uses: actions/upload-artifact@v4
@@ -34,6 +40,7 @@ jobs:
         with:
           name: phpstan-report
           path: phpstan-report.json
+
 
   # ==================================
   # 2️⃣ Docker Build + Image Security
@@ -53,21 +60,17 @@ jobs:
       - name: Check DVWA folder
         run: ls -la DVWA
 
-      - name: Set up Docker
-        uses: docker/setup-docker@v4
-        with:
-          version: 'latest'
-
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
+       # 🔐 Docker Hub Login (OBLIGATOIRE pour Docker Scout)
+      - name: Login to Docker Hub
+        run: echo ${{ secrets.REPO_PWD }} | docker login -u ${{ secrets.REPO_USER }} --password-stdin
+        
       - name: Install Docker Scout
         run: |
           curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
           sh install-scout.sh
-
-      - name: Docker Login with Secrets
-        run: echo ${{ secrets.REPO_PWD }} | docker login -u ${{ secrets.REPO_USER }} --password-stdin
 
       - name: Docker Scout Quickview
         run: docker scout quickview dvwa:latest || true
