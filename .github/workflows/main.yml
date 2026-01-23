@@ -17,21 +17,22 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
 
     - name: Set up PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.1'
 
-    # Étape officielle SonarCloud
     - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@v2.1.0
+      uses: SonarSource/sonarcloud-github-action@v2.2.1
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
-        projectKey: DVWA
-        organization: ton-org
-        token: ${{ secrets.SONAR_TOKEN }}
+        args: >
+          -Dsonar.projectKey=DVWA
+          -Dsonar.organization=ton-org
+          -Dsonar.sources=./DVWA
+          -Dsonar.host.url=https://sonarcloud.io
 
 
   # ==================================
