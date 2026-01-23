@@ -18,12 +18,12 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
-
-      - name: Install dependencies
-        run: composer install
+          tools: phpunit
 
       - name: Run PHPUnit
-        run: vendor/bin/phpunit tests/Unit
+        run: phpunit tests/Unit
+
+      
   # ===============================
   # 1️⃣ SAST – Analyse statique PHP
   # ===============================
