@@ -77,3 +77,6 @@ jobs:
 
       - name: Docker Scout CVE Scan
         run: docker scout cves dvwa:latest || true
+      - name: Run Unit Tests
+        run: vendor/bin/phpunit --configuration phpunit.xml
+        
