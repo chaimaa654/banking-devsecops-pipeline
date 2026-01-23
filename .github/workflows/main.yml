@@ -63,7 +63,7 @@ jobs:
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
-       # 🔐 Docker Hub Login (OBLIGATOIRE pour Docker Scout)
+       #  Docker Hub Login (OBLIGATOIRE pour Docker Scout)
       - name: Login to Docker Hub
         run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
         
