@@ -65,7 +65,7 @@ jobs:
 
        # 🔐 Docker Hub Login (OBLIGATOIRE pour Docker Scout)
       - name: Login to Docker Hub
-        run: echo ${{ secrets.REPO_PWD }} | docker login -u ${{ secrets.REPO_USER }} --password-stdin
+        run: echo ${{ secrets.REPO_USER }} | docker login -u ${{ secrets.REPO_PWD }} --password-stdin
         
       - name: Install Docker Scout
         run: |
