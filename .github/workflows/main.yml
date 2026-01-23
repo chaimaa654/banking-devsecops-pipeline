@@ -32,7 +32,7 @@ jobs:
       with:
         args: >
           -Dsonar.projectKey=DVWA
-          -Dsonar.organization=chaimaa654
+          -Dsonar.organization=chaimaa654-org
           -Dsonar.sources=./DVWA
           -Dsonar.host.url=https://sonarcloud.io
 
