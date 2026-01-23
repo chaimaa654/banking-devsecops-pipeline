@@ -108,3 +108,44 @@ jobs:
 
       - name: Docker Scout CVE Scan
         run: docker scout cves dvwa:latest || true
+  dast_scan:
+    name: DAST Scan DVWA (OWASP ZAP)
+    runs-on: ubuntu-latest
+    needs: image_scan  # attend que Docker Image soit construit et scanné
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Start DVWA container
+        run: |
+          docker run -d --name dvwa-dast -p 8080:80 dvwa:latest
+          sleep 15  # laisse le temps au container de démarrer
+
+      - name: Install OWASP ZAP CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+          wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.13.0/ZAP_2_13_0_Linux.zip -O zap.zip
+          unzip zap.zip -d $HOME/zap
+          export PATH=$PATH:$HOME/zap
+
+      - name: Run ZAP Baseline Scan
+        run: |
+          $HOME/zap/zap-baseline.py \
+            -t http://localhost:8080 \
+            -r zap-report.html \
+            -J zap-report.json || true
+
+      - name: Upload DAST Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-report
+          path: |
+            zap-report.html
+            zap-report.json
+
+      - name: Stop DVWA container
+        run: docker stop dvwa-dast && docker rm dvwa-dast
+
