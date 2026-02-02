@@ -33,7 +33,7 @@ jobs:
         args: >
           -Dsonar.projectKey=banking-devsecops-pipeline
           -Dsonar.organization=chaimaa654
-          -Dsonar.sources=./DVWA
+          -Dsonar.sources=DVWA
           -Dsonar.host.url=https://sonarcloud.io
 
 
