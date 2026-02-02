@@ -8,41 +8,46 @@ on:
 jobs:
 
   # =============================
-  # 1️⃣ SAST – Analyse statique PHP (SonarQube)
-  # ===============================
+  # 1️⃣ SAST – SonarCloud + Quality Gate
+  # =============================
   sast_scan:
-    name: SonarQube Scan DVWA
+    name: SAST - SonarCloud Scan
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Set up PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '8.1'
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
 
-    - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@v2
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      with:
-        args: >
-          -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
-          -Dsonar.organization=chaimaa654
-          -Dsonar.sources=DVWA
-          -Dsonar.host.url=https://sonarcloud.io
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
+            -Dsonar.organization=chaimaa654
+            -Dsonar.sources=DVWA
+            -Dsonar.host.url=https://sonarcloud.io
 
-
+      # 🔐 SECURITY GATE SAST
+      - name: SonarCloud Quality Gate
+        uses: SonarSource/sonarcloud-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # ==================================
-  # 2️⃣ SCA – Dépendances (Trivy)
+  # 2️⃣ SCA – Trivy FS + Security Gate
   # ==================================
   sca_scan:
-    name: SCA Scan DVWA (Trivy)
+    name: SCA - Trivy Filesystem Scan
     runs-on: ubuntu-latest
     needs: sast_scan
 
@@ -59,13 +64,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y trivy
 
-      - name: Run Trivy SCA Scan
+      # 🔐 SECURITY GATE SCA
+      - name: Trivy SCA Scan (Security Gate)
+        run: |
+          trivy fs \
+            --security-checks vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            ./DVWA
+
+      # 📊 Rapport pour audit
+      - name: Trivy SCA Report
+        if: always()
         run: |
           trivy fs \
             --security-checks vuln \
             --format json \
             --output trivy-sca-report.json \
-            ./DVWA || true
+            ./DVWA
 
       - name: Upload SCA Artifact
         uses: actions/upload-artifact@v4
@@ -75,10 +91,10 @@ jobs:
           path: trivy-sca-report.json
 
   # ==================================
-  # 3️⃣ Docker Build + Image Security
+  # 3️⃣ Docker Build + Image Security Gate
   # ==================================
   image_scan:
-    name: Build and Scan DVWA Image
+    name: Docker Image Build & Security Scan
     runs-on: ubuntu-latest
     needs: sca_scan
 
@@ -92,6 +108,20 @@ jobs:
       - name: Login to Docker Hub
         run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      # 🔐 SECURITY GATE IMAGE
+      - name: Trivy Image Scan (Security Gate)
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            dvwa:latest
+
+      # (Optionnel) Docker Scout – visibilité
       - name: Install Docker Scout
         run: |
           curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
