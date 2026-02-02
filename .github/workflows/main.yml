@@ -8,7 +8,7 @@ on:
 jobs:
 
   # =============================
-  # 1️⃣ SAST – SonarCloud + Quality Gate
+  # 1️⃣ SAST – SonarCloud + Quality Gate (BLOQUANT)
   # =============================
   sast_scan:
     name: SAST - SonarCloud Scan
@@ -25,7 +25,7 @@ jobs:
         with:
           php-version: '8.1'
 
-      - name: SonarCloud Scan
+      - name: SonarCloud Scan (Security Gate)
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -35,12 +35,11 @@ jobs:
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
             -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.qualitygate.wait=true
 
-      # 🔐 SECURITY GATE SAST
-      
 
   # ==================================
-  # 2️⃣ SCA – Trivy FS + Security Gate
+  # 2️⃣ SCA – Trivy FS + Security Gate (BLOQUANT)
   # ==================================
   sca_scan:
     name: SCA - Trivy Filesystem Scan
@@ -69,7 +68,7 @@ jobs:
             --exit-code 1 \
             ./DVWA
 
-      # 📊 Rapport pour audit
+      # 📊 Rapport pour audit / preuves
       - name: Trivy SCA Report
         if: always()
         run: |
@@ -86,8 +85,9 @@ jobs:
           name: trivy-sca-report
           path: trivy-sca-report.json
 
+
   # ==================================
-  # 3️⃣ Docker Build + Image Security Gate
+  # 3️⃣ Docker Build + Image Security Gate (BLOQUANT)
   # ==================================
   image_scan:
     name: Docker Image Build & Security Scan
