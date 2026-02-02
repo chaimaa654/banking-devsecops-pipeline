@@ -37,17 +37,7 @@ jobs:
             -Dsonar.host.url=https://sonarcloud.io
 
       # 🔐 SECURITY GATE SAST
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-           -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
-           -Dsonar.organization=chaimaa654
-           -Dsonar.sources=DVWA
-           -Dsonar.host.url=https://sonarcloud.io
-           -Dsonar.qualitygate.wait=true
+      
 
   # ==================================
   # 2️⃣ SCA – Trivy FS + Security Gate
