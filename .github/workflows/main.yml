@@ -102,15 +102,11 @@ jobs:
 
       - name: Install Trivy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y trivy
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
 
       - name: Trivy Image Scan (Security Gate)
         run: |
-          trivy image \
-            --severity HIGH,CRITICAL \
-            --exit-code 1 \
-            dvwa:latest
+          trivy fs --security-checks vuln --severity HIGH,CRITICAL --exit-code 1 ./DVWA
 
       - name: Install Docker Scout
         run: |
