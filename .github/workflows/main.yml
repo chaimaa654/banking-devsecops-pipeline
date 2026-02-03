@@ -51,7 +51,7 @@ jobs:
           scan-type: fs
           scan-ref: ./DVWA
           severity: HIGH,CRITICAL
-          exit-code: 0
+          exit-code: 0  # Non bloquant temporaire
           format: json
           output: trivy-sca-report.json
 
@@ -107,7 +107,7 @@ jobs:
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
 
       - name: Wait for DVWA
-        run: sleep 15
+        run: sleep 15  # Temps pour que DVWA soit prêt
 
       # 🔹 Lancer ZAP Baseline Scan via l’action officielle
       - name: OWASP ZAP Baseline Scan
@@ -116,7 +116,7 @@ jobs:
           target: 'http://localhost:8080'
           format: 'html'
           output: 'zap-report.html'
-          failAction: 'false'  # ⚠ Non bloquant temporaire
+          failAction: 'false'  # Non bloquant temporaire
 
       # 🔹 Upload rapport DAST
       - uses: actions/upload-artifact@v4
