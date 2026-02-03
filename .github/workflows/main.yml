@@ -108,10 +108,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
+       - name: Push DVWA Docker Image
+         run: docker tag dvwa:latest yourdockerhubusername/dvwa:latest
+       - run: docker push yourdockerhubusername/dvwa:latest
       # 🔹 Lancer DVWA dans un container
       - name: Run DVWA container
-        run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
+        run: docker run -d --name dvwa-staging -p 8080:80 yourdockerhubusername/dvwa:latest
 
       - name: Wait for DVWA
         run: sleep 15  # Temps pour que DVWA soit prêt
