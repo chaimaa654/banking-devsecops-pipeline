@@ -1,4 +1,4 @@
-name: DVWA DevSecOps Pipeline
+name: DVWA DevSecOps Pipeline 
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 jobs:
 
   # =============================
-  # 1️⃣ SAST – SonarCloud (BLOQUANT)
+  # 1️⃣ SAST – SonarCloud (NON BLOQUANT TEMPORAIRE)
   # =============================
   sast_scan:
     name: SAST - SonarCloud Scan
@@ -32,7 +32,7 @@ jobs:
             -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=false  
 
   # ==================================
   # 2️⃣ SCA – Trivy FS (BLOQUANT)
@@ -63,7 +63,7 @@ jobs:
           path: trivy-sca-report.json
 
   # ==================================
-  # 3️⃣ IMAGE – Docker + Trivy (BLOQUANT)
+  # 3️⃣ IMAGE – Docker + Trivy (NON BLOQUANT TEMPORAIRE)
   # ==================================
   image_scan:
     name: Image Security Scan
@@ -76,7 +76,21 @@ jobs:
       - name: Build Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
-      
+      - name: Trivy Image Scan (Security Gate)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: image
+          image-ref: dvwa:latest
+          severity: HIGH,CRITICAL
+          exit-code: 0       # TEMP : ne bloque pas
+          format: json
+          output: trivy-image-report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.json
 
   # ==================================
   # 4️⃣ DAST – OWASP ZAP (NON BLOQUANT AU DÉBUT)
