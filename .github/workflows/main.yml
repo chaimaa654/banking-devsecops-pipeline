@@ -9,7 +9,7 @@ jobs:
 
   # =============================
   # 1️⃣ SAST – SonarCloud (NON BLOQUANT TEMPORAIRE)
-  # =============================
+  # ============================
   sast_scan:
     name: SAST - SonarCloud Scan (Non Bloquant)
     runs-on: ubuntu-latest
