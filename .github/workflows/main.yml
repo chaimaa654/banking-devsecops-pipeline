@@ -4,31 +4,22 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
-
-env:
-  IMAGE_NAME: dvwa
-  IMAGE_TAG: ${{ github.sha }}
-  # 🔧 MODE APPRENTISSAGE - Security Gates désactivés pour DVWA
-  BLOCK_ON_VULNERABILITIES: false
 
 jobs:
+
   # ==========================
   # 1️⃣ SAST – SonarCloud
   # ==========================
   sast_scan:
     name: SAST - SonarCloud Scan
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
 
@@ -42,51 +33,17 @@ jobs:
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
             -Dsonar.qualitygate.wait=false
-        continue-on-error: true
-
-      - name: SAST Results Summary
-        run: |
-          echo "📊 =========================="
-          echo "📊 SAST SCAN COMPLETED"
-          echo "📊 =========================="
-          echo "⚠️  DVWA is intentionally vulnerable - results are for learning"
-          echo "🔓 Security Gate: DISABLED (Learning Mode)"
-          echo "✅ Continuing pipeline for DAST testing..."
-
-  # ====================================
-  # 2️⃣ SECRET SCANNING – Gitleaks
-  # ====================================
-  secret_scan:
-    name: Secret Scanning - Gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-        continue-on-error: true
-
-      - name: Secret Scan Summary
-        run: |
-          echo "🔍 Secret scanning completed"
-          echo "🔓 Security Gate: DISABLED (Learning Mode)"
 
   # ==================================
-  # 3️⃣ SCA – Trivy Filesystem Scan
+  # 2️⃣ SCA – Trivy Filesystem Scan
   # ==================================
   sca_scan:
     name: SCA - Trivy Filesystem Scan
     runs-on: ubuntu-latest
-    needs: [sast_scan, secret_scan]
+    needs: sast_scan
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Install Trivy
         run: |
@@ -95,255 +52,103 @@ jobs:
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update
-          sudo apt-get install -y trivy jq
+          sudo apt-get install -y trivy
 
       - name: Trivy SCA Scan
-        run: |
-          echo "🔍 Running Trivy Filesystem Scan..."
-          trivy fs --severity HIGH,CRITICAL ./DVWA
-        continue-on-error: true
+        run: trivy fs --severity HIGH,CRITICAL ./DVWA || true
 
       - name: Generate SCA Report
-        run: |
-          trivy fs --format json --output trivy-sca-report.json ./DVWA
+        run: trivy fs --format json --output trivy-sca-report.json ./DVWA
 
-      - name: Analyze SCA Results
-        run: |
-          echo ""
-          echo "📊 =========================="
-          echo "📊 SCA SCAN RESULTS"
-          echo "📊 =========================="
-          
-          if [ -f "trivy-sca-report.json" ]; then
-            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-sca-report.json)
-            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-sca-report.json)
-            MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-sca-report.json)
-            
-            echo "🔴 Critical: $CRITICAL"
-            echo "🟠 High: $HIGH"
-            echo "🟡 Medium: $MEDIUM"
-            echo ""
-            echo "⚠️  DVWA Analysis: This app is intentionally vulnerable"
-            echo "📚 Purpose: Security training and testing"
-            echo "🔓 Security Gate: DISABLED (Learning Mode)"
-            echo "✅ Continuing to next stage..."
-          fi
-
-      - name: Upload SCA Report
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: trivy-sca-report
           path: trivy-sca-report.json
 
-      - name: SCA Security Gate (Learning Mode)
-        run: |
-          echo "🔓 =========================="
-          echo "🔓 SECURITY GATE: LEARNING MODE"
-          echo "🔓 =========================="
-          
-          if [ "${{ env.BLOCK_ON_VULNERABILITIES }}" = "true" ]; then
-            echo "🔒 Security Gate would be ENFORCED in production"
-            # Dans un vrai projet, décommentez les lignes suivantes:
-            # if [ "$CRITICAL" -gt 5 ]; then
-            #   echo "❌ BLOCKED: Too many critical vulnerabilities"
-            #   exit 1
-            # fi
-          else
-            echo "✅ Security Gate BYPASSED for learning purposes"
-            echo "💡 Tip: Set BLOCK_ON_VULNERABILITIES=true for real projects"
-          fi
-
-  # ====================================
-  # 4️⃣ Docker Build & Image Security
-  # ====================================
+  # ==================================
+  # 3️⃣ Image Build + Image Security
+  # ==================================
   image_scan:
     name: Docker Image Build & Scan
     runs-on: ubuntu-latest
     needs: sca_scan
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Build Image
+        run: docker build -t dvwa:latest ./DVWA
 
-      - name: Build Docker Image
+      - name: Docker Login
+        run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
+
+      - name: Tag and Push Image
         run: |
-          echo "🏗️ Building Docker image..."
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ./DVWA
-          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_NAME }}:latest
-          echo "✅ Image built successfully"
+          docker tag dvwa:latest ${{ secrets.REPO_USER }}/dvwa:latest
+          docker push ${{ secrets.REPO_USER }}/dvwa:latest
 
       - name: Trivy Image Scan
-        run: |
-          echo "🔍 Running Trivy Image Scan..."
-          trivy image --severity HIGH,CRITICAL ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-        continue-on-error: true
+        run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
 
-      - name: Generate Image Scan Report
-        run: |
-          trivy image --format json --output trivy-image-report.json ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
-      - name: Analyze Image Scan Results
-        run: |
-          sudo apt-get install -y jq
-          
-          echo ""
-          echo "📊 =========================="
-          echo "📊 IMAGE SCAN RESULTS"
-          echo "📊 =========================="
-          
-          if [ -f "trivy-image-report.json" ]; then
-            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-image-report.json)
-            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-image-report.json)
-            MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-image-report.json)
-            
-            echo "🔴 Critical: $CRITICAL"
-            echo "🟠 High: $HIGH"
-            echo "🟡 Medium: $MEDIUM"
-            echo ""
-            echo "⚠️  DVWA is intentionally vulnerable"
-            echo "🔓 Security Gate: DISABLED (Learning Mode)"
-            echo "✅ Image will be pushed for DAST testing..."
-          fi
-
-      - name: Upload Image Scan Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-image-report
-          path: trivy-image-report.json
-
-      - name: Image Security Gate (Learning Mode)
-        run: |
-          echo "🔓 =========================="
-          echo "🔓 IMAGE SECURITY GATE: LEARNING MODE"
-          echo "🔓 =========================="
-          
-          if [ "${{ env.BLOCK_ON_VULNERABILITIES }}" = "true" ]; then
-            echo "🔒 In production mode, this would block deployment"
-            echo "📋 Recommendation: Fix vulnerabilities before production"
-          else
-            echo "✅ Security Gate BYPASSED for DVWA testing"
-            echo "🎯 Proceeding to push image and run DAST..."
-          fi
-
-      - name: Docker Login
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.REPO_USER }}
-          password: ${{ secrets.REPO_PWD }}
-
-      - name: Push Docker Image
-        run: |
-          echo "📤 Pushing image to registry..."
-          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          docker push ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:latest
-          echo "✅ Image pushed successfully"
-
-  # =====================================
-  # 5️⃣ DAST – ZAP Security Testing
-  # =====================================
+  # =============================
+  # 4️⃣ CD STAGING + DAST (ZAP)
+  # =============================
   dast_scan:
-    name: DAST - ZAP Security Scan
+    name: CD Staging + DAST (ZAP)
     runs-on: ubuntu-latest
     needs: image_scan
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
 
       - name: Docker Login
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.REPO_USER }}
-          password: ${{ secrets.REPO_PWD }}
+        run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
-      - name: Pull Docker Image
-        run: |
-          echo "📥 Pulling image from registry..."
-          docker pull ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:latest
-          echo "✅ Image pulled successfully"
+      - name: Pull Image
+        run: docker pull ${{ secrets.REPO_USER }}/dvwa:latest
 
-      - name: Create Docker Network
-        run: |
-          docker network create dvwa-net || true
+      - name: Create Network
+        run: docker network create dvwa-net || true
 
-      - name: Deploy DVWA Staging
+      - name: Run DVWA
         run: |
-          echo "🚀 Deploying DVWA to staging..."
           docker run -d \
             --name dvwa-staging \
             --network dvwa-net \
             -p 8080:80 \
-            -e RECAPTCHA_PRIV_KEY='' \
-            -e RECAPTCHA_PUB_KEY='' \
-            ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:latest
-          echo "✅ DVWA container started"
+            ${{ secrets.REPO_USER }}/dvwa:latest
 
       - name: Wait for DVWA to Start
         run: |
           echo "🔍 Waiting for DVWA to be ready..."
-          echo "⏱️ This may take up to 5 minutes..."
-          
           SUCCESS=false
           for i in {1..60}; do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null || echo "000")
-            
             if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
               echo "✅ DVWA is ready! (HTTP $HTTP_CODE)"
-              echo "🌐 Application URL: http://localhost:8080"
-              curl -I http://localhost:8080 2>/dev/null || true
               SUCCESS=true
               break
             fi
-            
-            echo "⏳ Attempt $i/60 - HTTP Code: $HTTP_CODE - waiting 5s..."
+            echo "⏳ Attempt $i/60 - HTTP Code: $HTTP_CODE"
             sleep 5
           done
           
           if [ "$SUCCESS" = false ]; then
-            echo "❌ DVWA failed to start after 5 minutes!"
-            echo "📋 Container logs:"
+            echo "❌ DVWA failed to start!"
             docker logs dvwa-staging
-            echo ""
-            echo "🔍 Container status:"
-            docker ps -a | grep dvwa-staging
             exit 1
           fi
-          
-          echo ""
-          echo "🎉 DVWA is fully operational!"
-          echo "🔒 Ready for security testing..."
-
-      - name: DVWA Health Check
-        run: |
-          echo "🏥 Running health checks..."
-          echo ""
-          echo "📊 Container Status:"
-          docker ps | grep dvwa-staging
-          echo ""
-          echo "🌐 HTTP Response:"
-          curl -s -I http://localhost:8080 | head -n 10
-          echo ""
-          echo "🔍 Application Response Test:"
-          curl -s http://localhost:8080 | grep -i "dvwa\|login\|damn" | head -n 5 || echo "Response received"
 
       - name: Create ZAP Reports Directory
-        run: |
-          mkdir -p zap-reports
-          chmod 777 zap-reports
+        run: mkdir -p zap-reports
 
-      # 🔹 PASSIVE SCAN - Baseline
-      - name: ZAP Baseline Scan (Passive)
+      # 🔹 Passive Scan
+      - name: ZAP Baseline Scan
         run: |
-          echo ""
-          echo "🔍 =========================="
-          echo "🔍 ZAP BASELINE SCAN (Passive)"
-          echo "🔍 =========================="
-          echo "📝 This scan will spider the application and identify issues passively"
-          echo ""
-          
+          echo "🔍 Running ZAP Baseline Scan (Passive)..."
           docker run --rm \
             --network dvwa-net \
             -v $(pwd)/zap-reports:/zap/wrk:rw \
@@ -352,22 +157,13 @@ jobs:
             -t http://dvwa-staging \
             -r zap-baseline.html \
             -J zap-baseline.json \
-            -w zap-baseline.md \
             -I || true
-          
           echo "✅ Baseline scan completed"
 
-      # 🔹 ACTIVE SCAN - Full Scan
-      - name: ZAP Full Scan (Active)
+      # 🔹 Active Scan
+      - name: ZAP Active Scan
         run: |
-          echo ""
-          echo "🎯 =========================="
-          echo "🎯 ZAP FULL ACTIVE SCAN"
-          echo "🎯 =========================="
-          echo "⚡ This scan will actively test for vulnerabilities"
-          echo "⏱️ Estimated time: 5-15 minutes"
-          echo ""
-          
+          echo "🎯 Running ZAP Full Active Scan..."
           docker run --rm \
             --network dvwa-net \
             -v $(pwd)/zap-reports:/zap/wrk:rw \
@@ -376,263 +172,108 @@ jobs:
             -t http://dvwa-staging \
             -r zap-active.html \
             -J zap-active.json \
-            -w zap-active.md \
             -m 5 \
             -T 15 \
             -I || true
-          
           echo "✅ Active scan completed"
 
-      # 📊 DETAILED ANALYSIS
-      - name: Analyze ZAP Results in Detail
+      # 📊 Analyze Results
+      - name: Analyze ZAP Results
         run: |
-          sudo apt-get install -y jq
-          
           echo ""
-          echo "📊 =================================="
-          echo "📊 DAST COMPREHENSIVE ANALYSIS"
-          echo "📊 =================================="
-          echo ""
+          echo "📊 =========================="
+          echo "📊 DAST SCAN RESULTS"
+          echo "📊 =========================="
           
-          # Function to analyze a report
           analyze_report() {
             local report=$1
             local name=$2
             
             if [ -f "$report" ]; then
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo "📄 $name"
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              echo "📄 $name:"
+              echo "----------------------------"
               
               CRITICAL=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' "$report" 2>/dev/null || echo "0")
               HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' "$report" 2>/dev/null || echo "0")
               MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode=="2")] | length' "$report" 2>/dev/null || echo "0")
               LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode=="1")] | length' "$report" 2>/dev/null || echo "0")
-              INFO=$(jq '[.site[]?.alerts[]? | select(.riskcode=="0")] | length' "$report" 2>/dev/null || echo "0")
               
               echo "🔴 Critical: $CRITICAL"
               echo "🟠 High: $HIGH"
               echo "🟡 Medium: $MEDIUM"
               echo "🟢 Low: $LOW"
-              echo "ℹ️  Info: $INFO"
-              echo ""
               
-              # Show Critical vulnerabilities
               if [ "$CRITICAL" -gt 0 ]; then
-                echo "🚨 CRITICAL VULNERABILITIES FOUND:"
-                jq -r '.site[]?.alerts[]? | select(.riskcode=="4") | "  ├─ \(.name)\n  │  Instances: \(.count)\n  │  Description: \(.desc | split("\n")[0])\n  └─ Solution: \(.solution | split("\n")[0])\n"' "$report" 2>/dev/null || true
+                echo ""
+                echo "🚨 Critical Vulnerabilities:"
+                jq -r '.site[]?.alerts[]? | select(.riskcode=="4") | "  - \(.name) (\(.count) instances)"' "$report" 2>/dev/null || true
               fi
               
-              # Show High vulnerabilities
               if [ "$HIGH" -gt 0 ]; then
-                echo "⚠️  HIGH SEVERITY VULNERABILITIES:"
-                jq -r '.site[]?.alerts[]? | select(.riskcode=="3") | "  ├─ \(.name)\n  │  Instances: \(.count)\n  │  Description: \(.desc | split("\n")[0])\n  └─ Solution: \(.solution | split("\n")[0])\n"' "$report" 2>/dev/null || true
+                echo ""
+                echo "⚠️  High Vulnerabilities:"
+                jq -r '.site[]?.alerts[]? | select(.riskcode=="3") | "  - \(.name) (\(.count) instances)"' "$report" 2>/dev/null || true
               fi
-              
-              echo ""
             else
               echo "⚠️ Report $report not found"
-              echo ""
             fi
           }
           
-          analyze_report "zap-reports/zap-baseline.json" "ZAP BASELINE SCAN (Passive)"
-          analyze_report "zap-reports/zap-active.json" "ZAP ACTIVE SCAN"
-          
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          analyze_report "zap-reports/zap-baseline.json" "ZAP Baseline (Passive)"
+          analyze_report "zap-reports/zap-active.json" "ZAP Active Scan"
 
-      # 🔒 SECURITY GATE (Learning Mode)
-      - name: DAST Security Gate (Learning Mode)
+      # 🔒 Security Gate (Learning Mode)
+      - name: DAST Security Gate
         run: |
           echo ""
-          echo "🔓 =================================="
-          echo "🔓 DAST SECURITY GATE: LEARNING MODE"
-          echo "🔓 =================================="
-          echo ""
+          echo "🔓 =========================="
+          echo "🔓 SECURITY GATE: LEARNING MODE"
+          echo "🔓 =========================="
           
           TOTAL_CRITICAL=0
           TOTAL_HIGH=0
           
-          # Check baseline report
           if [ -f "zap-reports/zap-baseline.json" ]; then
             BASELINE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' zap-reports/zap-baseline.json 2>/dev/null || echo "0")
             BASELINE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' zap-reports/zap-baseline.json 2>/dev/null || echo "0")
             TOTAL_CRITICAL=$((TOTAL_CRITICAL + BASELINE_CRIT))
             TOTAL_HIGH=$((TOTAL_HIGH + BASELINE_HIGH))
-            echo "📊 Baseline - Critical: $BASELINE_CRIT, High: $BASELINE_HIGH"
           fi
           
-          # Check active scan report
           if [ -f "zap-reports/zap-active.json" ]; then
             ACTIVE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' zap-reports/zap-active.json 2>/dev/null || echo "0")
             ACTIVE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' zap-reports/zap-active.json 2>/dev/null || echo "0")
             TOTAL_CRITICAL=$((TOTAL_CRITICAL + ACTIVE_CRIT))
             TOTAL_HIGH=$((TOTAL_HIGH + ACTIVE_HIGH))
-            echo "📊 Active   - Critical: $ACTIVE_CRIT, High: $ACTIVE_HIGH"
           fi
           
+          echo "📊 Total Critical: $TOTAL_CRITICAL"
+          echo "📊 Total High: $TOTAL_HIGH"
           echo ""
-          echo "📈 TOTAL FINDINGS:"
-          echo "   🔴 Critical: $TOTAL_CRITICAL"
-          echo "   🟠 High: $TOTAL_HIGH"
+          echo "⚠️  DVWA is intentionally vulnerable"
+          echo "🔓 Security Gate: DISABLED for learning"
+          echo "✅ DAST scan completed - review reports for findings"
           echo ""
+          echo "💡 For production: Set thresholds and enable blocking"
           
-          # Define thresholds for production
-          CRITICAL_THRESHOLD=0
-          HIGH_THRESHOLD=5
-          
-          echo "🎯 PRODUCTION THRESHOLDS:"
-          echo "   Critical: $CRITICAL_THRESHOLD (max allowed)"
-          echo "   High: $HIGH_THRESHOLD (max allowed)"
-          echo ""
-          
-          # Learning Mode - Show what would happen
-          if [ "${{ env.BLOCK_ON_VULNERABILITIES }}" = "true" ]; then
-            echo "🔒 PRODUCTION MODE SIMULATION:"
-            if [ "$TOTAL_CRITICAL" -gt "$CRITICAL_THRESHOLD" ]; then
-              echo "   ❌ Would BLOCK: $TOTAL_CRITICAL critical vulnerabilities exceed threshold"
-            elif [ "$TOTAL_HIGH" -gt "$HIGH_THRESHOLD" ]; then
-              echo "   ⚠️  Would WARN: $TOTAL_HIGH high vulnerabilities exceed threshold"
-            else
-              echo "   ✅ Would PASS: All findings within acceptable limits"
-            fi
-            echo ""
-          fi
-          
-          echo "🔓 CURRENT MODE: LEARNING"
-          echo "   ✅ Pipeline continues regardless of findings"
-          echo "   📚 Purpose: Learn from DVWA's intentional vulnerabilities"
-          echo "   💡 In production: Set BLOCK_ON_VULNERABILITIES=true"
-          echo ""
-          echo "🎓 LEARNING POINTS:"
-          echo "   • DVWA demonstrates common web vulnerabilities"
-          echo "   • These findings show what DAST can detect"
-          echo "   • Use this to understand security testing"
-          echo "   • Never deploy vulnerable apps to production!"
-          echo ""
-          echo "✅ DAST SCAN COMPLETED SUCCESSFULLY"
-
-      - name: Generate DAST Summary Report
-        run: |
-          cat > zap-reports/SUMMARY.md <<'EOF'
-          # 🔒 DAST Security Scan Summary
-          
-          ## 📊 Scan Information
-          - **Application**: DVWA (Damn Vulnerable Web Application)
-          - **Purpose**: Security Testing & Learning
-          - **Date**: $(date)
-          - **Pipeline**: GitHub Actions DevSecOps
-          
-          ## ⚠️ Important Notice
-          DVWA is **intentionally vulnerable** for educational purposes.
-          The vulnerabilities found are expected and demonstrate what DAST scanning can detect.
-          
-          ## 📈 Findings Overview
-          Please review the detailed HTML and JSON reports in this artifact.
-          
-          ## 🎓 Learning Objectives
-          - Understand common web vulnerabilities (OWASP Top 10)
-          - Learn how DAST tools detect security issues
-          - Practice analyzing security scan results
-          - Experience DevSecOps pipeline integration
-          
-          ## 🚀 Next Steps
-          1. Review the HTML reports for detailed findings
-          2. Compare passive vs. active scan results
-          3. Research each vulnerability type found
-          4. Understand remediation strategies
-          
-          ## 🔗 Reports Available
-          - `zap-baseline.html` - Passive scan results
-          - `zap-active.html` - Active scan results
-          - `zap-baseline.json` - Machine-readable baseline data
-          - `zap-active.json` - Machine-readable active scan data
-          
-          ---
-          **Remember**: Never deploy vulnerable applications to production!
-          EOF
-          
-          echo "📝 Summary report generated"
+          # Pour bloquer en production, décommentez:
+          # if [ "$TOTAL_CRITICAL" -gt 0 ]; then
+          #   echo "❌ BLOCKED: Critical vulnerabilities found"
+          #   exit 1
+          # fi
 
       - name: Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zap-dast-reports
+          name: zap-dast-report
           path: zap-reports/
-          retention-days: 30
-
-      - name: Display Download Instructions
-        if: always()
-        run: |
-          echo ""
-          echo "📦 =================================="
-          echo "📦 REPORTS READY FOR DOWNLOAD"
-          echo "📦 =================================="
-          echo ""
-          echo "✅ All DAST reports have been uploaded as artifacts"
-          echo ""
-          echo "📥 To download:"
-          echo "   1. Go to Actions tab in GitHub"
-          echo "   2. Click on this workflow run"
-          echo "   3. Scroll to 'Artifacts' section"
-          echo "   4. Download 'zap-dast-reports.zip'"
-          echo ""
-          echo "📄 Reports included:"
-          echo "   • zap-baseline.html (view in browser)"
-          echo "   • zap-active.html (view in browser)"
-          echo "   • zap-baseline.json (for automation)"
-          echo "   • zap-active.json (for automation)"
-          echo "   • SUMMARY.md (overview)"
-          echo ""
 
       - name: Cleanup
         if: always()
         run: |
-          echo "🧹 Cleaning up resources..."
-          docker rm -f dvwa-staging 2>/dev/null || true
-          docker network rm dvwa-net 2>/dev/null || true
+          echo "🧹 Cleaning up..."
+          docker rm -f dvwa-staging || true
+          docker network rm dvwa-net || true
           echo "✅ Cleanup completed"
-
-  # =====================================
-  # 6️⃣ FINAL SUMMARY
-  # =====================================
-  pipeline_summary:
-    name: Pipeline Summary
-    runs-on: ubuntu-latest
-    needs: [sast_scan, secret_scan, sca_scan, image_scan, dast_scan]
-    if: always()
-    steps:
-      - name: Pipeline Completion Summary
-        run: |
-          echo ""
-          echo "🎉 =================================="
-          echo "🎉 DEVSECOPS PIPELINE COMPLETED"
-          echo "🎉 =================================="
-          echo ""
-          echo "📊 Pipeline Stages:"
-          echo "   ✅ SAST (Static Analysis)"
-          echo "   ✅ Secret Scanning"
-          echo "   ✅ SCA (Software Composition Analysis)"
-          echo "   ✅ Container Image Scanning"
-          echo "   ✅ DAST (Dynamic Application Security Testing)"
-          echo ""
-          echo "🎓 Learning Mode Status:"
-          echo "   🔓 Security Gates: DISABLED"
-          echo "   📚 Purpose: Educational/Testing"
-          echo "   ⚠️  DVWA: Intentionally Vulnerable"
-          echo ""
-          echo "💡 Key Takeaways:"
-          echo "   • Complete DevSecOps pipeline implemented"
-          echo "   • Multiple security scanning techniques used"
-          echo "   • DAST successfully tested against DVWA"
-          echo "   • Reports generated for analysis"
-          echo ""
-          echo "🚀 For Production Use:"
-          echo "   1. Set BLOCK_ON_VULNERABILITIES=true"
-          echo "   2. Define appropriate thresholds"
-          echo "   3. Use secure, patched applications"
-          echo "   4. Implement automated remediation"
-          echo "   5. Add monitoring and alerting"
-          echo ""
-          echo "✅ All stages completed successfully!"
