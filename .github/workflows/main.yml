@@ -35,7 +35,11 @@ jobs:
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
             -Dsonar.host.url=https://sonarcloud.io
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=true
+
+      - name: SonarCloud Quality Gate Result
+        run: |
+          echo "✅ SonarCloud scan completed. Check results at: https://sonarcloud.io/dashboard?id=chaimaa654_banking-devsecops-pipeline"
 
   # ==========================
   # 2️⃣ SCA – Trivy Filesystem Scan
@@ -59,7 +63,7 @@ jobs:
           sudo apt-get install -y trivy
 
       - name: Trivy SCA Scan
-        run: trivy fs --security-checks vuln --severity HIGH,CRITICAL ./DVWA || true
+        run: trivy fs --security-checks vuln --severity HIGH,CRITICAL ./DVWA
 
       - name: Trivy SCA Report
         if: always()
@@ -69,6 +73,17 @@ jobs:
             --format json \
             --output trivy-sca-report.json \
             ./DVWA
+
+      - name: SCA Security Gate
+        run: |
+          CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-sca-report.json)
+          HIGH=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="HIGH")] | length' trivy-sca-report.json)
+          echo "🚨 High: $HIGH, 🔴 Critical: $CRITICAL"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "❌ SCA Security Gate FAILED"
+            exit 1
+          fi
+          echo "✅ SCA Security Gate PASSED"
 
       - name: Upload SCA Artifact
         if: always()
@@ -99,18 +114,25 @@ jobs:
         run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
 
       - name: Trivy Image Scan
-        run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
+        run: trivy image --severity HIGH,CRITICAL --format json --output trivy-image-report.json dvwa:latest
 
-      - name: Install Docker Scout
+      - name: Docker Image Security Gate
         run: |
-          curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
-          sh install-scout.sh
+          CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-image-report.json)
+          HIGH=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="HIGH")] | length' trivy-image-report.json)
+          echo "🚨 High: $HIGH, 🔴 Critical: $CRITICAL"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "❌ Docker Image Security Gate FAILED"
+            exit 1
+          fi
+          echo "✅ Docker Image Security Gate PASSED"
 
-      - name: Docker Scout Quickview
-        run: docker scout quickview dvwa:latest || true
-
-      - name: Docker Scout CVE Scan
-        run: docker scout cves dvwa:latest || true
+      - name: Upload Docker Image Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.json
 
   # =============================
   # 4️⃣ CD STAGING + DAST (ZAP)
@@ -121,27 +143,15 @@ jobs:
     needs: image_scan
 
     steps:
-      # -----------------------------
-      # 🔐 Docker Login
-      # -----------------------------
       - name: Login to Docker Hub
         run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
-      # -----------------------------
-      # 📥 Pull Image
-      # -----------------------------
       - name: Pull DVWA Image
         run: docker pull ${{ secrets.REPO_USER }}/dvwa:latest
 
-      # -----------------------------
-      # 🌐 Docker Network
-      # -----------------------------
       - name: Create Docker network
         run: docker network create dvwa-net || true
 
-      # -----------------------------
-      # 🚀 Run DVWA (Staging)
-      # -----------------------------
       - name: Run DVWA (Staging)
         run: |
           docker run -d \
@@ -150,9 +160,6 @@ jobs:
             -p 8080:80 \
             ${{ secrets.REPO_USER }}/dvwa:latest
 
-      # -----------------------------
-      # ⏳ Wait for Application
-      # -----------------------------
       - name: Wait for DVWA to be ready
         run: |
           echo "⏳ Waiting for DVWA..."
@@ -164,14 +171,10 @@ jobs:
             sleep 5
           done
 
-      # -----------------------------
-      # 🔍 OWASP ZAP Baseline Scan
-      # -----------------------------
       - name: OWASP ZAP Baseline Scan
         run: |
           mkdir -p zap-reports
           chmod 777 zap-reports
-
           docker run --rm \
             --network dvwa-net \
             -v $(pwd)/zap-reports:/zap/wrk \
@@ -184,38 +187,26 @@ jobs:
               -I \
               -d || true
 
-      # -----------------------------
-      # 🚧 DAST Security Gate
-      # -----------------------------
       - name: DAST Security Gate
         run: |
           REPORT="zap-reports/zap-report.json"
           echo "🔍 Analyzing ZAP report..."
-
           if [ ! -f "$REPORT" ]; then
             echo "❌ ZAP report not found – failing pipeline"
             exit 1
           fi
-
           CRITICAL=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' "$REPORT")
           HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' "$REPORT")
           MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' "$REPORT")
-
           echo "🚨 Critical: $CRITICAL"
           echo "🔴 High:     $HIGH"
           echo "🟠 Medium:   $MEDIUM"
-
-          # ---- Security Gate Rules ----
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "❌ SECURITY GATE FAILED: Critical/High vulnerabilities detected"
+            echo "❌ DAST Security Gate FAILED: Critical/High vulnerabilities detected"
             exit 1
           fi
+          echo "✅ DAST Security Gate PASSED"
 
-          echo "✅ SECURITY GATE PASSED"
-
-      # -----------------------------
-      # 📦 Upload DAST Reports
-      # -----------------------------
       - name: Upload ZAP DAST Report
         if: always()
         uses: actions/upload-artifact@v4
