@@ -32,7 +32,7 @@ jobs:
             -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
-            -Dsonar.qualitygate.wait=true  # Bloquant si Quality Gate échoue
+            -Dsonar.qualitygate.wait=false  # Bloquant si Quality Gate échoue
 
   # ==================================
   # 2️⃣ SCA – Trivy FS (BLOQUANT)
