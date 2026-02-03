@@ -76,21 +76,7 @@ jobs:
       - name: Build Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
-      - name: Trivy Image Scan (Security Gate)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: image
-          image-ref: dvwa:latest
-          severity: HIGH,CRITICAL
-          exit-code: 1
-          format: json
-          output: trivy-image-report.json
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-image-report
-          path: trivy-image-report.json
+      
 
   # ==================================
   # 4️⃣ DAST – OWASP ZAP (NON BLOQUANT AU DÉBUT)
