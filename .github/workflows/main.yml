@@ -39,7 +39,7 @@ jobs:
             -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=true
 
       - name: Check Quality Gate
         run: |
@@ -172,7 +172,7 @@ jobs:
           docker push ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           docker push ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:latest
 
-  # ====================================
+  # =====================================
   # 5️⃣ DAST – ZAP Security Testing
   # =====================================
   dast_scan:
@@ -464,4 +464,15 @@ jobs:
         run: |
           echo "❌ Pipeline failed! Check the logs."
           # Ajoutez Slack/Teams/Email notification ici
+```
 
+## 📋 Fichiers de Configuration Supplémentaires
+
+### 1. `.trivyignore` (optionnel)
+Créez ce fichier à la racine pour ignorer certaines vulnérabilités :
+```
+# Ignore specific CVEs
+CVE-2023-12345
+
+# Ignore by package
+pkg:composer/symfony/http-kernel
