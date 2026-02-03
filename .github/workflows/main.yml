@@ -102,21 +102,28 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # 🔹 Pull ZAP Docker Image pour éviter le pull access denied
-      - name: Pull OWASP ZAP Docker Image
-        run: docker pull owasp/zap2docker-stable:latest
+      # 🔹 Docker Hub login
+      - name: Docker Hub Login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 🔹 Pull ZAP
+      - name: Pull OWASP ZAP
+        run: docker pull owasp/zap2docker-weekly:latest
 
       # 🔹 Lancer DVWA dans un container
       - name: Run DVWA container
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
 
       - name: Wait for DVWA
-        run: sleep 15  # Temps pour que DVWA soit prêt
+        run: sleep 15
 
       # 🔹 Lancer ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
-          docker run --rm --network host owasp/zap2docker-stable:latest zap-baseline.py \
+          docker run --rm --network host owasp/zap2docker-weekly:latest zap-baseline.py \
             -t http://localhost:8080 \
             -r zap-report.html \
             -J zap-report.json
