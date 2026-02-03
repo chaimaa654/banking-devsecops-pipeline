@@ -32,7 +32,7 @@ jobs:
             -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
-            -Dsonar.qualitygate.wait=false  # ⚠ Non bloquant temporaire
+            -Dsonar.qualitygate.wait=false 
 
   # ==================================
   # 2️⃣ SCA – Trivy FS (NON BLOQUANT TEMPORAIREMENT)
