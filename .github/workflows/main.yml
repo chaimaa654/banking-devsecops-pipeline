@@ -8,7 +8,7 @@ on:
 jobs:
 
   # =============================
-  # 1️⃣ SAST – SonarCloud (Non Bloquant)
+  # 1️⃣ SAST – SonarCloud (NON BLOQUANT TEMPORAIRE)
   # =============================
   sast_scan:
     name: SAST - SonarCloud Scan (Non Bloquant)
@@ -23,7 +23,7 @@ jobs:
         with:
           php-version: '8.1'
 
-      - name: SonarCloud Scan
+      - name: SonarCloud Scan (Non Bloquant)
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -34,9 +34,9 @@ jobs:
             -Dsonar.sources=DVWA
             -Dsonar.qualitygate.wait=false  
 
-  # =============================
-  # 2️⃣ SCA – Trivy Filesystem Scan (Non Bloquant)
-  # =============================
+  # ==================================
+  # 2️⃣ SCA – Trivy FS (NON BLOQUANT TEMPORAIRE)
+  # ==================================
   sca_scan:
     name: SCA - Trivy Filesystem Scan (Non Bloquant)
     runs-on: ubuntu-latest
@@ -45,13 +45,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Trivy FS Scan
+      - name: Trivy FS Scan (Non Bloquant)
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: fs
           scan-ref: ./DVWA
           severity: HIGH,CRITICAL
-          exit-code: 0  # Non bloquant temporaire
+          exit-code: 0
           format: json
           output: trivy-sca-report.json
 
@@ -61,9 +61,9 @@ jobs:
           name: trivy-sca-report
           path: trivy-sca-report.json
 
-  # =============================
-  # 3️⃣ IMAGE – Docker + Trivy (Non Bloquant)
-  # =============================
+  # ==================================
+  # 3️⃣ IMAGE – Docker + Trivy (NON BLOQUANT TEMPORAIRE)
+  # ==================================
   image_scan:
     name: Docker Image Build (Non Bloquant)
     runs-on: ubuntu-latest
@@ -75,7 +75,7 @@ jobs:
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
-      - name: Trivy Image Scan
+      - name: Trivy Image Scan (Non Bloquant)
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
@@ -91,9 +91,9 @@ jobs:
           name: trivy-image-report
           path: trivy-image-report.json
 
-  # =============================
-  # 4️⃣ DAST – OWASP ZAP
-  # =============================
+  # ==================================
+  # 4️⃣ DAST – OWASP ZAP (PRINCIPAL)
+  # ==================================
   dast_scan:
     name: DAST - OWASP ZAP
     runs-on: ubuntu-latest
@@ -102,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # 🔹 Rebuild DVWA pour être sûr que l’image existe
+      # 🔹 Construire DVWA Docker Image directement ici
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
@@ -111,12 +111,12 @@ jobs:
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
 
       - name: Wait for DVWA
-        run: sleep 20  # Laisser le temps à l'app de démarrer
+        run: sleep 15
 
       # 🔹 Lancer ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
-          docker run --rm --network host owasp/zap2docker-stable:2.12.0 zap-baseline.py \
+          docker run --rm --network host owasp/zap2docker-stable:2.11.1 zap-baseline.py \
             -t http://localhost:8080 \
             -r zap-report.html \
             -J zap-report.json
