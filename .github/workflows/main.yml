@@ -96,23 +96,7 @@ jobs:
           echo "clean_user=${CLEAN_USER}" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ steps.secrets.outputs.clean_user }}
-          password: ${{ secrets.REPO_PWD }}
-
-      - name: Build Image
-        run: docker build -t dvwa:latest ./DVWA
-
-      - name: Tag and Push Image
-        run: |
-          docker tag dvwa:latest ${{ steps.secrets.outputs.clean_user }}/dvwa:latest
-          docker push ${{ steps.secrets.outputs.clean_user }}/dvwa:latest
-
-      - name: Trivy Image Scan
-        run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
-
-  # =============================
+    # =============================
   # 4️⃣ CD STAGING + DAST (ZAP)
   # =============================
   dast_scan:
@@ -162,6 +146,7 @@ jobs:
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null || echo "000")
             if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
               echo "✅ DVWA is ready! (HTTP $HTTP_CODE)"
+              curl -I http://localhost:8080
               SUCCESS=true
               break
             fi
@@ -175,16 +160,27 @@ jobs:
             exit 1
           fi
 
+      - name: Test DVWA Accessibility from Docker Network
+        run: |
+          echo "🔍 Testing if DVWA is accessible from docker network..."
+          docker run --rm --network dvwa-net curlimages/curl:latest \
+            curl -v http://dvwa-staging:80 || echo "⚠️ DVWA not accessible from docker network"
+
       - name: Create ZAP Reports Directory
         run: |
           mkdir -p ${{ github.workspace }}/zap-reports
           chmod 777 ${{ github.workspace }}/zap-reports
+          echo "📁 Created directory: ${{ github.workspace }}/zap-reports"
           ls -la ${{ github.workspace }}/
 
-      # 🔹 Passive Scan
+      # 🔹 Passive Scan with Full Output
       - name: ZAP Baseline Scan
         run: |
           echo "🔍 Running ZAP Baseline Scan (Passive)..."
+          echo "Target: http://dvwa-staging:80"
+          echo "Reports dir: ${{ github.workspace }}/zap-reports"
+          echo ""
+          
           docker run --rm \
             --network dvwa-net \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk:rw \
@@ -193,15 +189,24 @@ jobs:
             -t http://dvwa-staging:80 \
             -r zap-baseline.html \
             -J zap-baseline.json \
-            -I || true
+            -w zap-baseline.md \
+            -I 2>&1 | tee ${{ github.workspace }}/zap-baseline-output.log || true
           
-          echo "📁 Checking if baseline report was created..."
-          ls -la ${{ github.workspace }}/zap-reports/ || echo "⚠️ Directory not accessible"
+          echo ""
+          echo "📁 Checking baseline reports..."
+          ls -lah ${{ github.workspace }}/zap-reports/ || echo "⚠️ No reports directory"
+          
+          echo ""
+          echo "📄 ZAP baseline output (last 50 lines):"
+          tail -n 50 ${{ github.workspace }}/zap-baseline-output.log || true
 
-      # 🔹 Active Scan
+      # 🔹 Active Scan with Full Output
       - name: ZAP Active Scan
         run: |
           echo "🎯 Running ZAP Full Active Scan..."
+          echo "Target: http://dvwa-staging:80"
+          echo ""
+          
           docker run --rm \
             --network dvwa-net \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk:rw \
@@ -210,48 +215,42 @@ jobs:
             -t http://dvwa-staging:80 \
             -r zap-active.html \
             -J zap-active.json \
+            -w zap-active.md \
             -m 5 \
             -T 15 \
-            -I || true
+            -I 2>&1 | tee ${{ github.workspace }}/zap-active-output.log || true
           
-          echo "📁 Checking if active report was created..."
-          ls -la ${{ github.workspace }}/zap-reports/ || echo "⚠️ Directory not accessible"
+          echo ""
+          echo "📁 Checking active scan reports..."
+          ls -lah ${{ github.workspace }}/zap-reports/ || echo "⚠️ No reports directory"
+          
+          echo ""
+          echo "📄 ZAP active output (last 50 lines):"
+          tail -n 50 ${{ github.workspace }}/zap-active-output.log || true
 
-      # 📊 Verify Reports Exist
-      - name: Verify ZAP Reports
+      # 📊 Comprehensive Debug
+      - name: Debug - List All Files
+        if: always()
         run: |
-          echo "📊 Verifying ZAP reports..."
+          echo "🔍 ================================"
+          echo "🔍 COMPLETE FILE SYSTEM DEBUG"
+          echo "🔍 ================================"
           echo ""
-          if [ -f "${{ github.workspace }}/zap-reports/zap-baseline.html" ]; then
-            echo "✅ zap-baseline.html found"
-          else
-            echo "❌ zap-baseline.html NOT found"
-          fi
-          
-          if [ -f "${{ github.workspace }}/zap-reports/zap-baseline.json" ]; then
-            echo "✅ zap-baseline.json found"
-          else
-            echo "❌ zap-baseline.json NOT found"
-          fi
-          
-          if [ -f "${{ github.workspace }}/zap-reports/zap-active.html" ]; then
-            echo "✅ zap-active.html found"
-          else
-            echo "❌ zap-active.html NOT found"
-          fi
-          
-          if [ -f "${{ github.workspace }}/zap-reports/zap-active.json" ]; then
-            echo "✅ zap-active.json found"
-          else
-            echo "❌ zap-active.json NOT found"
-          fi
-          
+          echo "📁 Workspace contents:"
+          ls -laR ${{ github.workspace }}/ || echo "Cannot list workspace"
           echo ""
-          echo "📁 All files in zap-reports:"
-          ls -lah ${{ github.workspace }}/zap-reports/ || echo "Directory is empty or doesn't exist"
+          echo "📁 ZAP reports directory:"
+          ls -lah ${{ github.workspace }}/zap-reports/ || echo "No zap-reports directory"
+          echo ""
+          echo "📁 Looking for any ZAP files anywhere:"
+          find ${{ github.workspace }} -name "zap*.html" -o -name "zap*.json" -o -name "zap*.md" 2>/dev/null || echo "No ZAP files found"
+          echo ""
+          echo "🐳 Docker volumes:"
+          docker volume ls
 
-      # 📊 Analyze Results
+      # 📊 Analyze Results (if they exist)
       - name: Analyze ZAP Results
+        if: always()
         run: |
           echo ""
           echo "📊 =========================="
@@ -282,66 +281,58 @@ jobs:
                 echo "🚨 Critical Vulnerabilities:"
                 jq -r '.site[]?.alerts[]? | select(.riskcode=="4") | "  - \(.name) (\(.count) instances)"' "$report" 2>/dev/null || true
               fi
-              
-              if [ "$HIGH" -gt 0 ]; then
-                echo ""
-                echo "⚠️  High Vulnerabilities:"
-                jq -r '.site[]?.alerts[]? | select(.riskcode=="3") | "  - \(.name) (\(.count) instances)"' "$report" 2>/dev/null || true
-              fi
             else
-              echo "⚠️ Report $report not found"
+              echo "⚠️ Report $report not found - scan may have failed"
             fi
           }
           
           analyze_report "${{ github.workspace }}/zap-reports/zap-baseline.json" "ZAP Baseline (Passive)"
           analyze_report "${{ github.workspace }}/zap-reports/zap-active.json" "ZAP Active Scan"
 
-      # 🔒 Security Gate (Learning Mode)
+      # 🔒 Security Gate
       - name: DAST Security Gate
+        if: always()
         run: |
           echo ""
           echo "🔓 =========================="
           echo "🔓 SECURITY GATE: LEARNING MODE"
           echo "🔓 =========================="
-          
-          TOTAL_CRITICAL=0
-          TOTAL_HIGH=0
-          
-          if [ -f "${{ github.workspace }}/zap-reports/zap-baseline.json" ]; then
-            BASELINE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' ${{ github.workspace }}/zap-reports/zap-baseline.json 2>/dev/null || echo "0")
-            BASELINE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' ${{ github.workspace }}/zap-reports/zap-baseline.json 2>/dev/null || echo "0")
-            TOTAL_CRITICAL=$((TOTAL_CRITICAL + BASELINE_CRIT))
-            TOTAL_HIGH=$((TOTAL_HIGH + BASELINE_HIGH))
-          fi
-          
-          if [ -f "${{ github.workspace }}/zap-reports/zap-active.json" ]; then
-            ACTIVE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' ${{ github.workspace }}/zap-reports/zap-active.json 2>/dev/null || echo "0")
-            ACTIVE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' ${{ github.workspace }}/zap-reports/zap-active.json 2>/dev/null || echo "0")
-            TOTAL_CRITICAL=$((TOTAL_CRITICAL + ACTIVE_CRIT))
-            TOTAL_HIGH=$((TOTAL_HIGH + ACTIVE_HIGH))
-          fi
-          
-          echo "📊 Total Critical: $TOTAL_CRITICAL"
-          echo "📊 Total High: $TOTAL_HIGH"
-          echo ""
           echo "⚠️  DVWA is intentionally vulnerable"
           echo "🔓 Security Gate: DISABLED for learning"
-          echo "✅ DAST scan completed - review reports for findings"
-          echo ""
-          echo "💡 For production: Set thresholds and enable blocking"
+          echo "✅ Pipeline continues regardless of findings"
 
-      - name: Upload ZAP Reports
+      # 📤 Upload ALL artifacts (including logs)
+      - name: Upload ZAP Reports and Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zap-dast-report
-          path: ${{ github.workspace }}/zap-reports/
+          name: zap-dast-complete
+          path: |
+            ${{ github.workspace }}/zap-reports/
+            ${{ github.workspace }}/zap-*.log
           if-no-files-found: warn
 
       - name: Cleanup
         if: always()
         run: |
           echo "🧹 Cleaning up..."
+          docker logs dvwa-staging || true
           docker rm -f dvwa-staging || true
           docker network rm dvwa-net || true
-          echo "✅ Cleanup completed"
+          echo "✅ Cleanup completed"    uses: docker/login-action@v3
+        with:
+          username: ${{ steps.secrets.outputs.clean_user }}
+          password: ${{ secrets.REPO_PWD }}
+
+      - name: Build Image
+        run: docker build -t dvwa:latest ./DVWA
+
+      - name: Tag and Push Image
+        run: |
+          docker tag dvwa:latest ${{ steps.secrets.outputs.clean_user }}/dvwa:latest
+          docker push ${{ steps.secrets.outputs.clean_user }}/dvwa:latest
+
+      - name: Trivy Image Scan
+        run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
+
+  
