@@ -172,7 +172,7 @@ jobs:
           docker push ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           docker push ${{ secrets.REPO_USER }}/${{ env.IMAGE_NAME }}:latest
 
-  # =====================================
+  # ====================================
   # 5️⃣ DAST – ZAP Security Testing
   # =====================================
   dast_scan:
