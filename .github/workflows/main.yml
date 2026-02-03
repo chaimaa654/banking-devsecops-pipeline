@@ -111,7 +111,7 @@ jobs:
 
       # 🔹 Pull ZAP
       - name: Pull OWASP ZAP
-        run: docker pull owasp/zap2docker-weekly:latest
+        run: docker pull owasp/zap2docker-stable:2.12.0
 
       # 🔹 Lancer DVWA dans un container
       - name: Run DVWA container
