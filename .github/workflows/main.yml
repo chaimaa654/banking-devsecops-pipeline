@@ -115,7 +115,7 @@ jobs:
           
 
       - name: Trivy Image Scan
-        run: trivy image --severity HIGH,CRITICAL --format json --output trivy-image-report.json dvwa:latest
+        run: trivy image --severity HIGH,CRITICAL --format json --output trivy-image-report.json ${{ secrets.REPO_USER }}/dvwa:latest
 
       - name: Docker Image Security Gate
         run: |
