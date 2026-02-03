@@ -95,12 +95,12 @@ jobs:
   # ==================================
   # 3️⃣ Docker Image Build + Security Scan
   # ==================================
-image_scan:
-  name: Docker Image Build & Security Scan
-  runs-on: ubuntu-latest
-  needs: sca_scan
+  image_scan:
+    name: Docker Image Build & Security Scan
+    runs-on: ubuntu-latest
+    needs: sca_scan
 
-  steps:
+    steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
