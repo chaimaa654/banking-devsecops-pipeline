@@ -464,15 +464,4 @@ jobs:
         run: |
           echo "❌ Pipeline failed! Check the logs."
           # Ajoutez Slack/Teams/Email notification ici
-```
 
-## 📋 Fichiers de Configuration Supplémentaires
-
-### 1. `.trivyignore` (optionnel)
-Créez ce fichier à la racine pour ignorer certaines vulnérabilités :
-```
-# Ignore specific CVEs
-CVE-2023-12345
-
-# Ignore by package
-pkg:composer/symfony/http-kernel
