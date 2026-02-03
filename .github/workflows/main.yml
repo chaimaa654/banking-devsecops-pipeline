@@ -127,21 +127,32 @@ jobs:
           sudo apt-get install -y jq curl
 
       - name: Docker Login
-        run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
+        env:
+          REPO_USER: ${{ secrets.REPO_USER }}
+        run: |
+          CLEAN_USER=$(echo "$REPO_USER" | tr -d '[:space:]')
+          echo "${{ secrets.REPO_PWD }}" | docker login -u "$CLEAN_USER" --password-stdin
 
       - name: Pull Image
-        run: docker pull ${{ secrets.REPO_USER }}/dvwa:latest
+        env:
+          REPO_USER: ${{ secrets.REPO_USER }}
+        run: |
+          CLEAN_USER=$(echo "$REPO_USER" | tr -d '[:space:]')
+          docker pull ${CLEAN_USER}/dvwa:latest
 
       - name: Create Network
         run: docker network create dvwa-net || true
 
       - name: Run DVWA
+        env:
+          REPO_USER: ${{ secrets.REPO_USER }}
         run: |
+          CLEAN_USER=$(echo "$REPO_USER" | tr -d '[:space:]')
           docker run -d \
             --name dvwa-staging \
             --network dvwa-net \
             -p 8080:80 \
-            ${{ secrets.REPO_USER }}/dvwa:latest
+            ${CLEAN_USER}/dvwa:latest
 
       - name: Wait for DVWA to Start
         run: |
@@ -165,7 +176,10 @@ jobs:
           fi
 
       - name: Create ZAP Reports Directory
-        run: mkdir -p zap-reports
+        run: |
+          mkdir -p ${{ github.workspace }}/zap-reports
+          chmod 777 ${{ github.workspace }}/zap-reports
+          ls -la ${{ github.workspace }}/
 
       # 🔹 Passive Scan
       - name: ZAP Baseline Scan
@@ -173,14 +187,16 @@ jobs:
           echo "🔍 Running ZAP Baseline Scan (Passive)..."
           docker run --rm \
             --network dvwa-net \
-            -v $(pwd)/zap-reports:/zap/wrk:rw \
+            -v ${{ github.workspace }}/zap-reports:/zap/wrk:rw \
             ghcr.io/zaproxy/zap-stable:latest \
             zap-baseline.py \
-            -t http://dvwa-staging \
+            -t http://dvwa-staging:80 \
             -r zap-baseline.html \
             -J zap-baseline.json \
             -I || true
-          echo "✅ Baseline scan completed"
+          
+          echo "📁 Checking if baseline report was created..."
+          ls -la ${{ github.workspace }}/zap-reports/ || echo "⚠️ Directory not accessible"
 
       # 🔹 Active Scan
       - name: ZAP Active Scan
@@ -188,16 +204,51 @@ jobs:
           echo "🎯 Running ZAP Full Active Scan..."
           docker run --rm \
             --network dvwa-net \
-            -v $(pwd)/zap-reports:/zap/wrk:rw \
+            -v ${{ github.workspace }}/zap-reports:/zap/wrk:rw \
             ghcr.io/zaproxy/zap-stable:latest \
             zap-full-scan.py \
-            -t http://dvwa-staging \
+            -t http://dvwa-staging:80 \
             -r zap-active.html \
             -J zap-active.json \
             -m 5 \
             -T 15 \
             -I || true
-          echo "✅ Active scan completed"
+          
+          echo "📁 Checking if active report was created..."
+          ls -la ${{ github.workspace }}/zap-reports/ || echo "⚠️ Directory not accessible"
+
+      # 📊 Verify Reports Exist
+      - name: Verify ZAP Reports
+        run: |
+          echo "📊 Verifying ZAP reports..."
+          echo ""
+          if [ -f "${{ github.workspace }}/zap-reports/zap-baseline.html" ]; then
+            echo "✅ zap-baseline.html found"
+          else
+            echo "❌ zap-baseline.html NOT found"
+          fi
+          
+          if [ -f "${{ github.workspace }}/zap-reports/zap-baseline.json" ]; then
+            echo "✅ zap-baseline.json found"
+          else
+            echo "❌ zap-baseline.json NOT found"
+          fi
+          
+          if [ -f "${{ github.workspace }}/zap-reports/zap-active.html" ]; then
+            echo "✅ zap-active.html found"
+          else
+            echo "❌ zap-active.html NOT found"
+          fi
+          
+          if [ -f "${{ github.workspace }}/zap-reports/zap-active.json" ]; then
+            echo "✅ zap-active.json found"
+          else
+            echo "❌ zap-active.json NOT found"
+          fi
+          
+          echo ""
+          echo "📁 All files in zap-reports:"
+          ls -lah ${{ github.workspace }}/zap-reports/ || echo "Directory is empty or doesn't exist"
 
       # 📊 Analyze Results
       - name: Analyze ZAP Results
@@ -242,8 +293,8 @@ jobs:
             fi
           }
           
-          analyze_report "zap-reports/zap-baseline.json" "ZAP Baseline (Passive)"
-          analyze_report "zap-reports/zap-active.json" "ZAP Active Scan"
+          analyze_report "${{ github.workspace }}/zap-reports/zap-baseline.json" "ZAP Baseline (Passive)"
+          analyze_report "${{ github.workspace }}/zap-reports/zap-active.json" "ZAP Active Scan"
 
       # 🔒 Security Gate (Learning Mode)
       - name: DAST Security Gate
@@ -256,16 +307,16 @@ jobs:
           TOTAL_CRITICAL=0
           TOTAL_HIGH=0
           
-          if [ -f "zap-reports/zap-baseline.json" ]; then
-            BASELINE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' zap-reports/zap-baseline.json 2>/dev/null || echo "0")
-            BASELINE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' zap-reports/zap-baseline.json 2>/dev/null || echo "0")
+          if [ -f "${{ github.workspace }}/zap-reports/zap-baseline.json" ]; then
+            BASELINE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' ${{ github.workspace }}/zap-reports/zap-baseline.json 2>/dev/null || echo "0")
+            BASELINE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' ${{ github.workspace }}/zap-reports/zap-baseline.json 2>/dev/null || echo "0")
             TOTAL_CRITICAL=$((TOTAL_CRITICAL + BASELINE_CRIT))
             TOTAL_HIGH=$((TOTAL_HIGH + BASELINE_HIGH))
           fi
           
-          if [ -f "zap-reports/zap-active.json" ]; then
-            ACTIVE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' zap-reports/zap-active.json 2>/dev/null || echo "0")
-            ACTIVE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' zap-reports/zap-active.json 2>/dev/null || echo "0")
+          if [ -f "${{ github.workspace }}/zap-reports/zap-active.json" ]; then
+            ACTIVE_CRIT=$(jq '[.site[]?.alerts[]? | select(.riskcode=="4")] | length' ${{ github.workspace }}/zap-reports/zap-active.json 2>/dev/null || echo "0")
+            ACTIVE_HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode=="3")] | length' ${{ github.workspace }}/zap-reports/zap-active.json 2>/dev/null || echo "0")
             TOTAL_CRITICAL=$((TOTAL_CRITICAL + ACTIVE_CRIT))
             TOTAL_HIGH=$((TOTAL_HIGH + ACTIVE_HIGH))
           fi
@@ -278,19 +329,14 @@ jobs:
           echo "✅ DAST scan completed - review reports for findings"
           echo ""
           echo "💡 For production: Set thresholds and enable blocking"
-          
-          # Pour bloquer en production, décommentez:
-          # if [ "$TOTAL_CRITICAL" -gt 0 ]; then
-          #   echo "❌ BLOCKED: Critical vulnerabilities found"
-          #   exit 1
-          # fi
 
       - name: Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap-dast-report
-          path: zap-reports/
+          path: ${{ github.workspace }}/zap-reports/
+          if-no-files-found: warn
 
       - name: Cleanup
         if: always()
