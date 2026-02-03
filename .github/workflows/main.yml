@@ -84,8 +84,10 @@ jobs:
 
       - name: Tag and Push Image
         run: |
-          docker tag dvwa:latest ${{ secrets.REPO_USER }}/dvwa:latest
-          docker push ${{ secrets.REPO_USER }}/dvwa:latest
+          docker tag dvwa:latest "${{ secrets.REPO_USER }}/dvwa:latest"
+      - name: Push Image
+        run: |
+          docker push "${{ secrets.REPO_USER }}/dvwa:latest"
 
       - name: Trivy Image Scan
         run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
