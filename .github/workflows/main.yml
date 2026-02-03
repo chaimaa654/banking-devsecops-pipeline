@@ -173,28 +173,29 @@ jobs:
           REPORT="zap-reports/zap-report.json"
 
           if [ ! -f "$REPORT" ]; then
-            echo "⚠️ ZAP report not found – skipping security gate"
-            exit 0
+            echo "❌ ZAP report not found – failing pipeline"
+            exit 1
           fi
 
           echo "🔍 Analyzing ZAP results..."
 
-          CRITICAL=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' "$REPORT")
-          HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' "$REPORT")
-          MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' "$REPORT")
-          LOW=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' "$REPORT")
+          HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' "$REPORT")
+          MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' "$REPORT")
+          LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' "$REPORT")
 
-          echo "🚨 High: $CRITICAL"
-          echo "🟠 Medium: $HIGH"
-          echo "🟡 Low: $MEDIUM"
-          echo "🟢 Info: $LOW"
+          echo "🚨 High: $HIGH"
+          echo "🟠 Medium: $MEDIUM"
+          echo "🟡 Low: $LOW"
 
-          echo ""
-          echo "🔓 Security Gate: DISABLED (DVWA is intentionally vulnerable)"
-          echo "✅ Pipeline continues"
-      - name: Upload ZAP Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-dast-report
-          path: zap-reports/
+          if [ "$HIGH" -gt 0 ]; then
+            echo "❌ SECURITY GATE FAILED: High vulnerabilities detected"
+            exit 1
+          fi
+
+          if [ "$MEDIUM" -gt 5 ]; then
+            echo "❌ SECURITY GATE FAILED: Too many Medium vulnerabilities"
+            exit 1
+          fi
+
+          echo "✅ SECURITY GATE PASSED"
+
