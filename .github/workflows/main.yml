@@ -96,10 +96,12 @@ jobs:
       # 🔹 Run DVWA container pour DAST
       - name: Run DVWA container
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
-
+   
       - name: Wait for DVWA to start
         run: sleep 15  # Laisse le temps à l’application de démarrer
-
+        
+      - name: Pull OWASP ZAP Docker Image
+        run: docker pull owasp/zap2docker-stable:latest
       # 🔹 OWASP ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
