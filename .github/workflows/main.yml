@@ -168,18 +168,27 @@ jobs:
 
 
       - name: DAST Security Gate
-        run: echo "DAST completed – Security Gate disabled (DVWA is intentionally vulnerable)"
-
-      - name: Upload ZAP Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-dast-report
-          path: zap-reports/
-
-      - name: Cleanup
         if: always()
         run: |
-          docker stop dvwa-staging || true
-          docker rm dvwa-staging || true
-          docker network rm dvwa-net || true
+          REPORT="zap-reports/zap-report.json"
+
+          if [ ! -f "$REPORT" ]; then
+            echo "⚠️ ZAP report not found – skipping security gate"
+            exit 0
+          fi
+
+          echo "🔍 Analyzing ZAP results..."
+
+          CRITICAL=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' "$REPORT")
+          HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' "$REPORT")
+          MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' "$REPORT")
+          LOW=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' "$REPORT")
+
+          echo "🚨 High: $CRITICAL"
+          echo "🟠 Medium: $HIGH"
+          echo "🟡 Low: $MEDIUM"
+          echo "🟢 Info: $LOW"
+
+          echo ""
+          echo "🔓 Security Gate: DISABLED (DVWA is intentionally vulnerable)"
+          echo "✅ Pipeline continues"
