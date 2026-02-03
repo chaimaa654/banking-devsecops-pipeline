@@ -76,18 +76,38 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate and Clean Secrets
+        id: secrets
+        env:
+          REPO_USER: ${{ secrets.REPO_USER }}
+        run: |
+          # Nettoyer et valider
+          CLEAN_USER=$(echo "$REPO_USER" | tr -d '[:space:]' | tr -d '\n' | tr -d '\r')
+          
+          if [ -z "$CLEAN_USER" ]; then
+            echo "❌ REPO_USER is empty after cleaning!"
+            exit 1
+          fi
+          
+          echo "✅ Clean username: ${CLEAN_USER}"
+          echo "clean_user=${CLEAN_USER}" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ steps.secrets.outputs.clean_user }}
+          password: ${{ secrets.REPO_PWD }}
+
       - name: Build Image
         run: docker build -t dvwa:latest ./DVWA
 
-      - name: Docker Login
-        run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
-
       - name: Tag and Push Image
         run: |
-          docker tag dvwa:latest "${{ secrets.REPO_USER }}/dvwa:latest"
-      - name: Push Image
-        run: |
-          docker push "${{ secrets.REPO_USER }}/dvwa:latest"
+          docker tag dvwa:latest ${{ steps.secrets.outputs.clean_user }}/dvwa:latest
+          docker push ${{ steps.secrets.outputs.clean_user }}/dvwa:latest
 
       - name: Trivy Image Scan
         run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
