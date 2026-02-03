@@ -6,24 +6,23 @@ on:
       - main
 
 jobs:
-
   # =============================
-  # 1️⃣ SAST – SonarCloud
+  # 1️⃣ SAST – SonarCloud (NON BLOQUANT TEMPORAIRE)
   # =============================
   sast_scan:
-    name: SAST - SonarCloud
+    name: SAST - SonarCloud Scan (Non Bloquant)
     runs-on: ubuntu-latest
-
+    
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
+      
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
-
-      - name: SonarCloud Scan
+      
+      - name: SonarCloud Scan (Non Bloquant)
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -34,76 +33,104 @@ jobs:
             -Dsonar.sources=DVWA
             -Dsonar.qualitygate.wait=false
 
-  # =============================
-  # 2️⃣ SCA – Trivy FS
-  # =============================
+  # ==================================
+  # 2️⃣ SCA – Trivy FS (NON BLOQUANT TEMPORAIRE)
+  # ==================================
   sca_scan:
-    name: SCA - Trivy FS
+    name: SCA - Trivy Filesystem Scan (Non Bloquant)
     runs-on: ubuntu-latest
     needs: sast_scan
-
+    
     steps:
       - uses: actions/checkout@v3
-
-      - name: Trivy FS Scan
+      
+      - name: Trivy FS Scan (Non Bloquant)
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: fs
           scan-ref: ./DVWA
           severity: HIGH,CRITICAL
           exit-code: 0
+          format: json
+          output: trivy-sca-report.json
+      
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-sca-report
+          path: trivy-sca-report.json
 
-  # =============================
-  # 3️⃣ IMAGE – Build + Trivy
-  # =============================
+  # ==================================
+  # 3️⃣ IMAGE – Docker + Trivy (NON BLOQUANT TEMPORAIRE)
+  # ==================================
   image_scan:
-    name: Docker Image Build
+    name: Docker Image Build (Non Bloquant)
     runs-on: ubuntu-latest
     needs: sca_scan
-
+    
     steps:
       - uses: actions/checkout@v3
-
+      
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
-
-      - name: Trivy Image Scan
+      
+      - name: Trivy Image Scan (Non Bloquant)
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
           image-ref: dvwa:latest
+          severity: HIGH,CRITICAL
           exit-code: 0
+          format: json
+          output: trivy-image-report.json
+      
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.json
 
-  # =============================
-  # 4️⃣ DAST – OWASP ZAP
-  # =============================
+  # ==================================
+  # 4️⃣ DAST – OWASP ZAP (PRINCIPAL)
+  # ==================================
   dast_scan:
     name: DAST - OWASP ZAP
     runs-on: ubuntu-latest
     needs: image_scan
-
+    
     steps:
       - uses: actions/checkout@v3
-
+      
+      # 🔹 Construire DVWA Docker Image
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
-
-      - name: Run DVWA
+      
+      # 🔹 Lancer DVWA dans un container
+      - name: Run DVWA container
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
-
+      
       - name: Wait for DVWA
-        run: sleep 20
-
+        run: sleep 15
+      
+      # 🔹 Lancer ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
-          docker run --rm --network host ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+          docker run --rm --network host -v $(pwd):/zap/wrk/:rw \
+            ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
             -t http://localhost:8080 \
-            -r zap-report.html
-
+            -r zap-report.html \
+            -J zap-report.json
+      
+      # 🔹 Upload rapport DAST
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: zap-report
-          path: zap-report.html
-
-      - name: Stop DVWA
+          name: zap-dast-report
+          path: |
+            zap-report.html
+            zap-report.json
+      
+      # 🔹 Stop DVWA container
+      - name: Stop DVWA container
+        if: always()
         run: docker rm -f dvwa-staging
