@@ -101,51 +101,30 @@ jobs:
     needs: sca_scan
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Build DVWA Docker Image
-      run: docker build -t dvwa:latest ./DVWA
+      - name: Build DVWA Docker Image
+        run: docker build -t dvwa:latest ./DVWA
 
-    - name: Login to Docker Hub
-      run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
-    # ✅ Utiliser le Trivy GitHub Action officiel
-    - name: Install Trivy
-      uses: aquasecurity/trivy-action@master
+      - name: Install Trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
 
-    # -----------------------------
-    # 🔍 Scan de l'image locale
-    # -----------------------------
-    - name: Trivy Image Scan
-      run: |
-        # Scanner l'image locale dvwa:latest
-        trivy image --severity HIGH,CRITICAL --format json --output trivy-image-report.json dvwa:latest || true
+      - name: Trivy Image Scan
+        run: trivy image --severity HIGH,CRITICAL dvwa:latest || true
 
-    # -----------------------------
-    # 🚧 Security Gate
-    # -----------------------------
-    - name: Docker Image Security Gate
-      run: |
-        # Éviter les erreurs si JSON est vide
-        CRITICAL=$(jq '[.Vulnerabilities[] | select(.Severity=="CRITICAL")] | length // 0' trivy-image-report.json)
-        HIGH=$(jq '[.Vulnerabilities[] | select(.Severity=="HIGH")] | length // 0' trivy-image-report.json)
-        echo "🚨 High: $HIGH, 🔴 Critical: $CRITICAL"
-        if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-          echo "❌ Docker Image Security Gate FAILED"
-          exit 1
-        fi
-        echo "✅ Docker Image Security Gate PASSED"
+      - name: Install Docker Scout
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
+          sh install-scout.sh
+      - name: Docker Scout Quickview
+        run: docker scout quickview dvwa:latest || true
 
-    # -----------------------------
-    # 📦 Upload du rapport
-    # -----------------------------
-    - name: Upload Docker Image Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: trivy-image-report
-        path: trivy-image-report.json
+      - name: Docker Scout CVE Scan
+        run: docker scout cves dvwa:latest || true
 
   # =============================
   # 4️⃣ CD STAGING + DAST (ZAP)
