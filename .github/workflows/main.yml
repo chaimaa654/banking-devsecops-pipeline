@@ -32,8 +32,7 @@ jobs:
             -Dsonar.projectKey=chaimaa654_banking-devsecops-pipeline
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
-            -Dsonar.qualitygate.wait=false
-
+            -Dsonar.qualitygate.wait=true  # Bloquant si Quality Gate échoue
 
   # ==================================
   # 2️⃣ SCA – Trivy FS (BLOQUANT)
@@ -46,27 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # ✅ INSTALL TRIVY (OFFICIEL)
-      - name: Install Trivy
+      # 🔹 Trivy FS Scan via l’action officielle
+      - name: Trivy FS Scan (Security Gate)
         uses: aquasecurity/trivy-action@0.24.0
-
-      # 🔐 SECURITY GATE
-      - name: Trivy FS Scan
-        run: |
-          trivy fs \
-            --security-checks vuln \
-            --severity HIGH,CRITICAL \
-            --exit-code 1 \
-            ./DVWA
-
-      # 📊 REPORT
-      - name: Trivy FS Report
-        if: always()
-        run: |
-          trivy fs \
-            --format json \
-            --output trivy-sca-report.json \
-            ./DVWA
+        with:
+          scan-type: fs
+          scan-ref: ./DVWA
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: json
+          output: trivy-sca-report.json
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -74,12 +62,11 @@ jobs:
           name: trivy-sca-report
           path: trivy-sca-report.json
 
-
   # ==================================
   # 3️⃣ IMAGE – Docker + Trivy (BLOQUANT)
   # ==================================
   image_scan:
-    name: Docker Image Security Scan
+    name: Image Security Scan
     runs-on: ubuntu-latest
     needs: sca_scan
 
@@ -89,17 +76,21 @@ jobs:
       - name: Build Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
-      - name: Install Trivy
+      - name: Trivy Image Scan (Security Gate)
         uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: image
+          image-ref: dvwa:latest
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          format: json
+          output: trivy-image-report.json
 
-      # 🔐 IMAGE SECURITY GATE
-      - name: Trivy Image Scan
-        run: |
-          trivy image \
-            --severity HIGH,CRITICAL \
-            --exit-code 1 \
-            dvwa:latest
-
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.json
 
   # ==================================
   # 4️⃣ DAST – OWASP ZAP (NON BLOQUANT AU DÉBUT)
@@ -112,12 +103,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Run DVWA
+      # 🔹 Lancer l’application dans Docker
+      - name: Run DVWA container
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
 
       - name: Wait for app
-        run: sleep 10
+        run: sleep 15  # Temps pour que DVWA soit prêt
 
+      # 🔹 Lancer ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
           docker run --rm --network host owasp/zap2docker-stable zap-baseline.py \
@@ -125,10 +118,12 @@ jobs:
             -r zap-report.html \
             -J zap-report.json
 
+      # 🔹 Upload rapports
       - uses: actions/upload-artifact@v4
         with:
           name: zap-dast-report
           path: zap-report.html
 
-      - name: Stop DVWA
+      # 🔹 Stop container
+      - name: Stop DVWA container
         run: docker rm -f dvwa-staging
