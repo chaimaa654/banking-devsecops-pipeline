@@ -102,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # 🔹 Construire DVWA Docker Image directement ici
+      # 🔹 Construire DVWA Docker Image
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
@@ -113,10 +113,10 @@ jobs:
       - name: Wait for DVWA
         run: sleep 15
 
-      # 🔹 Lancer ZAP Baseline Scan
+      # 🔹 Lancer ZAP Baseline Scan (image accessible publiquement)
       - name: OWASP ZAP Baseline Scan
         run: |
-          docker run --rm --network host owasp/zap2docker-stable:2.11.1 zap-baseline.py \
+          docker run --rm --network host -t owasp/zap2docker zap-baseline.py \
             -t http://localhost:8080 \
             -r zap-report.html \
             -J zap-report.json
