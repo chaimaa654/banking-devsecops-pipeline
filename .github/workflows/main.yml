@@ -35,7 +35,7 @@ jobs:
             -Dsonar.organization=chaimaa654
             -Dsonar.sources=DVWA
             -Dsonar.host.url=https://sonarcloud.io
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=true
 
   # ==================================
   # 2️⃣ SCA – Trivy FS + Security Gate (BLOQUANT)
@@ -49,33 +49,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 🔹 Installer Trivy FS
       - name: Install Trivy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install -y trivy
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
 
-      - name: Trivy SCA Scan (Security Gate)
+      # 🔹 Scanner le filesystem
+      - name: Trivy FS Scan (Security Gate)
         run: |
-          trivy fs \
-            --security-checks vuln \
-            --severity HIGH,CRITICAL \
-            --exit-code 1 \
-            ./DVWA
+          trivy fs --security-checks vuln --severity HIGH,CRITICAL --exit-code 1 ./DVWA
 
-      - name: Trivy SCA Report
+      # 🔹 Générer rapport JSON pour audit
+      - name: Trivy FS Report
         if: always()
         run: |
-          trivy fs \
-            --security-checks vuln \
-            --format json \
-            --output trivy-sca-report.json \
-            ./DVWA
+          trivy fs --security-checks vuln --format json --output trivy-sca-report.json ./DVWA
 
-      - name: Upload SCA Artifact
+      - name: Upload Trivy FS Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -94,33 +84,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 🔹 Build Docker Image
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
 
+      # 🔹 Login Docker Hub
       - name: Login to Docker Hub
         run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
+      # 🔹 Installer Trivy pour scan image
       - name: Install Trivy
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
 
+      # 🔹 Scanner l'image Docker
       - name: Trivy Image Scan (Security Gate)
         run: |
-          trivy fs --security-checks vuln --severity HIGH,CRITICAL --exit-code 1 ./DVWA
+          trivy image --severity HIGH,CRITICAL --exit-code 1 dvwa:latest
 
+      # 🔹 Optionnel : Docker Scout
       - name: Install Docker Scout
         run: |
           curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
           sh install-scout.sh
-
       - name: Docker Scout Quickview
         run: docker scout quickview dvwa:latest || true
-
       - name: Docker Scout CVE Scan
         run: docker scout cves dvwa:latest || true
 
   # ==================================
-  # 4️⃣ DAST – OWASP ZAP (Security Gate) – Exécuté dans GitHub Actions
+  # 4️⃣ DAST – OWASP ZAP (Security Gate)
   # ==================================
   dast_scan:
     name: DAST - OWASP ZAP Scan
@@ -144,14 +137,10 @@ jobs:
       # 🔹 OWASP ZAP Baseline Scan
       - name: DAST Scan OWASP ZAP
         run: |
-          docker run --rm -t owasp/zap2docker-stable zap-baseline.py \
-            -t http://host.docker.internal:8080 \
+          docker run --rm --network host owasp/zap2docker-stable zap-baseline.py \
+            -t http://localhost:8080 \
             -r zap-report.html \
             -J zap-report.json
-
-      # 🔹 Bloquer si vulnérabilités HIGH
-      # Ici on peut analyser zap-report.json et exit 1 si nécessaire
-      # Pour simplifier : le scan est bloquant si ZAP détecte HIGH par défaut
 
       # 🔹 Upload rapport
       - name: Upload ZAP DAST Report
