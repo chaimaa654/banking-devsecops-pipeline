@@ -76,14 +76,14 @@ jobs:
 
       - name: SCA Security Gate
         run: |
-          CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-sca-report.json)
-          HIGH=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="HIGH")] | length' trivy-sca-report.json)
+          CRITICAL=$(jq '[.Results[].Vulnerabilities // [] | .[] | select(.Severity=="CRITICAL")] | length' trivy-sca-report.json)
+          HIGH=$(jq '[.Results[].Vulnerabilities // [] | .[] | select(.Severity=="HIGH")] | length' trivy-sca-report.json)
           echo "🚨 High: $HIGH, 🔴 Critical: $CRITICAL"
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
             echo "❌ SCA Security Gate FAILED"
             exit 1
           fi
-          echo "✅ SCA Security Gate PASSED"
+            echo "✅ SCA Security Gate PASSED"
 
       - name: Upload SCA Artifact
         if: always()
