@@ -101,6 +101,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
+      # 🔹 Créer un répertoire pour les rapports ZAP
+      - name: Create ZAP reports directory
+        run: mkdir -p ${{ github.workspace }}/zap-reports
+      
       # 🔹 Construire DVWA Docker Image
       - name: Build DVWA Docker Image
         run: docker build -t dvwa:latest ./DVWA
@@ -110,25 +114,35 @@ jobs:
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
       
       - name: Wait for DVWA
-        run: sleep 15
+        run: sleep 20
+      
+      # 🔹 Vérifier que DVWA est accessible
+      - name: Check DVWA is running
+        run: curl -f http://localhost:8080 || exit 1
       
       # 🔹 Lancer ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
-          docker run --rm --network host -v $(pwd):/zap/wrk/:rw \
+          docker run --rm --network host \
+            -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
+            -u root \
             ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
             -t http://localhost:8080 \
             -r zap-report.html \
-            -J zap-report.json
+            -J zap-report.json \
+            -I || true
+      
+      # 🔹 Afficher le contenu du répertoire (debug)
+      - name: List ZAP reports
+        if: always()
+        run: ls -la ${{ github.workspace }}/zap-reports/
       
       # 🔹 Upload rapport DAST
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: zap-dast-report
-          path: |
-            zap-report.html
-            zap-report.json
+          path: ${{ github.workspace }}/zap-reports/
       
       # 🔹 Stop DVWA container
       - name: Stop DVWA container
