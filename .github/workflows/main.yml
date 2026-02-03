@@ -51,7 +51,7 @@ jobs:
           scan-type: fs
           scan-ref: ./DVWA
           severity: HIGH,CRITICAL
-          exit-code: 0  # ⚠ Non bloquant temporaire
+          exit-code: 0  # Non bloquant temporaire
           format: json
           output: trivy-sca-report.json
 
@@ -81,7 +81,7 @@ jobs:
           scan-type: image
           image-ref: dvwa:latest
           severity: HIGH,CRITICAL
-          exit-code: 0  # ⚠ Non bloquant temporaire
+          exit-code: 0
           format: json
           output: trivy-image-report.json
 
@@ -102,20 +102,21 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # 🔹 Construire DVWA et le lancer localement
-      - name: Build DVWA Docker Image
-        run: docker build -t dvwa:latest ./DVWA
+      # 🔹 Pull ZAP Docker Image pour éviter le pull access denied
+      - name: Pull OWASP ZAP Docker Image
+        run: docker pull owasp/zap2docker-stable:latest
 
+      # 🔹 Lancer DVWA dans un container
       - name: Run DVWA container
         run: docker run -d --name dvwa-staging -p 8080:80 dvwa:latest
 
       - name: Wait for DVWA
         run: sleep 15  # Temps pour que DVWA soit prêt
 
-      # 🔹 Lancer ZAP Baseline Scan localement
+      # 🔹 Lancer ZAP Baseline Scan
       - name: OWASP ZAP Baseline Scan
         run: |
-          docker run --rm --network host owasp/zap2docker-weekly:latest zap-baseline.py \
+          docker run --rm --network host owasp/zap2docker-stable:latest zap-baseline.py \
             -t http://localhost:8080 \
             -r zap-report.html \
             -J zap-report.json
