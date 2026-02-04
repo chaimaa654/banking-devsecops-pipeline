@@ -110,17 +110,27 @@ jobs:
     - name: Login to Docker Hub
       run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
+    # -----------------------------
+    # 🔐 Installer Trivy (comme dans SCA)
+    # -----------------------------
     - name: Install Trivy
-      uses: aquasecurity/trivy-action@v0.2.0
-
-    - name: Trivy Image Scan
       run: |
-        trivy image \
-        --severity HIGH,CRITICAL \
-        --format json \
-        --output trivy-image-report.json \
-        ${{ secrets.REPO_USER }}/dvwa:latest
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install -y trivy
 
+    # -----------------------------
+    # 🔍 Scanner l'image Docker
+    # -----------------------------
+    - name: Trivy Image Scan
+      run: trivy image --severity HIGH,CRITICAL --format json --output trivy-image-report.json ${{ secrets.REPO_USER }}/dvwa:latest
+
+    # -----------------------------
+    # 🚧 Security Gate pour Trivy
+    # -----------------------------
     - name: Docker Image Security Gate
       run: |
         if [ ! -f trivy-image-report.json ]; then
@@ -136,7 +146,30 @@ jobs:
         fi
         echo "✅ Docker Image Security Gate PASSED"
 
- 
+    # -----------------------------
+    # 📦 Installer Docker Scout
+    # -----------------------------
+    - name: Install Docker Scout
+      run: |
+        curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
+        sh install-scout.sh
+
+    - name: Docker Scout Quickview
+      run: docker scout quickview ${{ secrets.REPO_USER }}/dvwa:latest || true
+
+    - name: Docker Scout CVE Scan
+      run: docker scout cves ${{ secrets.REPO_USER }}/dvwa:latest || true
+
+    # -----------------------------
+    # 📦 Upload Trivy Report
+    # -----------------------------
+    - name: Upload Docker Image Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-image-report
+        path: trivy-image-report.json
+
 
 
 
