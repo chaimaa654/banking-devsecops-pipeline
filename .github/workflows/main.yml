@@ -111,15 +111,15 @@ jobs:
       run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
     - name: Install Trivy
-      run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
+      uses: aquasecurity/trivy-action@v2
 
     - name: Trivy Image Scan
       run: |
         trivy image \
-          --severity HIGH,CRITICAL \
-          --format json \
-          --output trivy-image-report.json \
-          ${{ secrets.REPO_USER }}/dvwa:latest
+        --severity HIGH,CRITICAL \
+        --format json \
+        --output trivy-image-report.json \
+        ${{ secrets.REPO_USER }}/dvwa:latest
 
     - name: Docker Image Security Gate
       run: |
