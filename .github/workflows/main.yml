@@ -111,7 +111,7 @@ jobs:
       run: echo "${{ secrets.REPO_PWD }}" | docker login -u "${{ secrets.REPO_USER }}" --password-stdin
 
     - name: Install Trivy
-      uses: aquasecurity/trivy-action@v2
+      uses: aquasecurity/trivy-action@v0.2.0
 
     - name: Trivy Image Scan
       run: |
