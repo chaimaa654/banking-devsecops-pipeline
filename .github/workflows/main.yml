@@ -114,7 +114,12 @@ jobs:
       run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh
 
     - name: Trivy Image Scan
-      run: trivy image --severity HIGH,CRITICAL --format json --output trivy-image-report.json ${{ secrets.REPO_USER }}/dvwa:latest || true
+      run: |
+        trivy image \
+          --severity HIGH,CRITICAL \
+          --format json \
+          --output trivy-image-report.json \
+          ${{ secrets.REPO_USER }}/dvwa:latest
 
     - name: Docker Image Security Gate
       run: |
@@ -131,23 +136,7 @@ jobs:
         fi
         echo "✅ Docker Image Security Gate PASSED"
 
-    - name: Install Docker Scout
-      run: |
-        curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
-        sh install-scout.sh
-
-    - name: Docker Scout Quickview
-      run: docker scout quickview ${{ secrets.REPO_USER }}/dvwa:latest || true
-
-    - name: Docker Scout CVE Scan
-      run: docker scout cves ${{ secrets.REPO_USER }}/dvwa:latest || true
-
-    - name: Upload Docker Image Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: trivy-image-report
-        path: trivy-image-report.json
+ 
 
 
 
